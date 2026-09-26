@@ -1,0 +1,11 @@
+<Solution>
+  <Project Path="AnomalyDetection.Api.Tests/AnomalyDetection.Api.Tests.csproj" />
+  <Project Path="AnomalyDetection.Api/AnomalyDetection.Api.csproj" />
+  <Project Path="AnomalyDetection.Bootstrap/AnomalyDetection.Bootstrap.csproj" />
+  <Project Path="AnomalyDetection.Core.Tests/AnomalyDetection.Core.Tests.csproj" />
+  <Project Path="AnomalyDetection.Core/AnomalyDetection.Core.csproj" />
+  <Project Path="AnomalyDetection.Infrastructure.Tests/AnomalyDetection.Infrastructure.Tests.csproj" />
+  <Project Path="AnomalyDetection.Infrastructure/AnomalyDetection.Infrastructure.csproj" />
+  <Project Path="AnomalyDetection.Worker.Tests/AnomalyDetection.Worker.Tests.csproj" />
+  <Project Path="AnomalyDetection.Worker/AnomalyDetection.Worker.csproj" />
+</Solution>
