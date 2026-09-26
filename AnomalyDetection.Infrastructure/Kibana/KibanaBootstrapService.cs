@@ -105,6 +105,19 @@ public sealed class KibanaBootstrapService : IKibanaBootstrapService
         {
             return;
         }
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogError(
+                "Failed to create ML job {JobId}. Status: {StatusCode}. Response: {Response}",
+                _anomalyDetectionOptions.JobId,
+                (int)response.StatusCode,
+                responseBody);
+
+            throw new HttpRequestException(
+                $"Failed to create ML job. HTTP {(int)response.StatusCode}: {responseBody}");
+        }
 
         response.EnsureSuccessStatusCode();
         _logger.LogInformation("Ensured ML job {JobId}", _anomalyDetectionOptions.JobId);
@@ -138,40 +151,165 @@ public sealed class KibanaBootstrapService : IKibanaBootstrapService
     private JsonObject BuildMlJobDefinition()
     {
         var detectors = new JsonArray();
+
         foreach (var detector in _anomalyDetectionOptions.Detectors)
         {
-            detectors.Add(new JsonObject
+            var detectorJson = new JsonObject
             {
                 ["detector_description"] = detector.Description,
-                ["function"] = detector.Function,
-                ["field_name"] = detector.FieldName,
-                ["by_field_name"] = detector.ByFieldName,
-                ["over_field_name"] = detector.OverFieldName,
-                ["partition_field_name"] = detector.PartitionFieldName
-            });
+                ["function"] = detector.Function
+            };
+
+            if (!string.IsNullOrWhiteSpace(detector.FieldName))
+            {
+                detectorJson["field_name"] = detector.FieldName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(detector.ByFieldName))
+            {
+                detectorJson["by_field_name"] = detector.ByFieldName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(detector.OverFieldName))
+            {
+                detectorJson["over_field_name"] = detector.OverFieldName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(detector.PartitionFieldName))
+            {
+                detectorJson["partition_field_name"] =
+                    detector.PartitionFieldName;
+            }
+
+            detectors.Add(detectorJson);
         }
 
         var influencers = new JsonArray();
+
         foreach (var influencer in _anomalyDetectionOptions.Influencers)
         {
-            influencers.Add(influencer);
+            if (!string.IsNullOrWhiteSpace(influencer))
+            {
+                influencers.Add(influencer);
+            }
         }
 
         return new JsonObject
         {
-            ["description"] = "Anomaly detection for application telemetry",
+            ["description"] =
+                "Anomaly detection for application telemetry",
+
             ["analysis_config"] = new JsonObject
             {
-                ["bucket_span"] = _anomalyDetectionOptions.BucketSpan,
+                ["bucket_span"] =
+                    _anomalyDetectionOptions.BucketSpan,
+
                 ["detectors"] = detectors,
+
                 ["influencers"] = influencers
             },
+
             ["data_description"] = new JsonObject
             {
-                ["time_field"] = _sourceFieldsOptions.Timestamp
+                ["time_field"] =
+                    _sourceFieldsOptions.Timestamp
             }
         };
     }
+
+    //private JsonObject BuildMlJobDefinition()
+    //{
+    //    var detectors = new JsonArray();
+    //    foreach (var detector in _anomalyDetectionOptions.Detectors)
+    //    {
+    //        //detectors.Add(new JsonObject
+    //        //{
+    //        //    ["detector_description"] = detector.Description,
+    //        //    ["function"] = detector.Function,
+    //        //    ["field_name"] = detector.FieldName,
+    //        //    ["by_field_name"] = detector.ByFieldName,
+    //        //    ["over_field_name"] = detector.OverFieldName,
+    //        //    ["partition_field_name"] = detector.PartitionFieldName
+    //        //});
+
+    //        var detectorJson = new JsonObject
+    //        {
+    //            ["detector_description"] = detector.Description,
+    //            ["function"] = detector.Function
+    //        };
+
+    //        if (!string.IsNullOrWhiteSpace(detector.FieldName))
+    //        {
+    //            detectorJson["field_name"] = detector.FieldName;
+    //        }
+
+    //        if (!string.IsNullOrWhiteSpace(detector.ByFieldName))
+    //        {
+    //            detectorJson["by_field_name"] = detector.ByFieldName;
+    //        }
+
+    //        if (!string.IsNullOrWhiteSpace(detector.OverFieldName))
+    //        {
+    //            detectorJson["over_field_name"] = detector.OverFieldName;
+    //        }
+
+    //        if (!string.IsNullOrWhiteSpace(detector.PartitionFieldName))
+    //        {
+    //            detectorJson["partition_field_name"] = detector.PartitionFieldName;
+    //        }
+
+    //        detectors.Add(detectorJson);
+
+    //    }
+
+    //    //var influencers = new JsonArray();
+    //    //foreach (var influencer in _anomalyDetectionOptions.Influencers)
+    //    //{
+    //    //    influencers.Add(influencer);
+    //    //}
+
+    //    //return new JsonObject
+    //    //{
+    //    //    ["description"] = "Anomaly detection for application telemetry",
+    //    //    ["analysis_config"] = new JsonObject
+    //    //    {
+    //    //        ["bucket_span"] = _anomalyDetectionOptions.BucketSpan,
+    //    //        ["detectors"] = detectors,
+    //    //        ["influencers"] = influencers
+    //    //    },
+    //    //    ["data_description"] = new JsonObject
+    //    //    {
+    //    //        ["time_field"] = _sourceFieldsOptions.Timestamp
+    //    //    }
+    //    //};
+
+    //    var influencers = new JsonArray();
+
+    //    foreach (var influencer in _anomalyDetectionOptions.Influencers)
+    //    {
+    //        if (!string.IsNullOrWhiteSpace(influencer))
+    //        {
+    //            influencers.Add(influencer);
+    //        }
+    //    }
+
+    //    return new JsonObject
+    //    {
+    //        ["description"] = "Anomaly detection for application telemetry",
+
+    //        ["analysis_config"] = new JsonObject
+    //        {
+    //            ["bucket_span"] = _anomalyDetectionOptions.BucketSpan,
+    //            ["detectors"] = detectors,
+    //            ["influencers"] = influencers
+    //        },
+
+    //        ["data_description"] = new JsonObject
+    //        {
+    //            ["time_field"] = _sourceFieldsOptions.Timestamp
+    //        }
+    //    };
+    //}
 
     private JsonObject BuildDatafeedDefinition()
     {
