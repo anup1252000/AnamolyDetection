@@ -21,3 +21,5 @@ catch (Exception exception)
     logger.LogError(exception, "Kibana bootstrap failed.");
     throw;
 }
+
+Console.ReadLine();

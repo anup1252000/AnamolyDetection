@@ -14,7 +14,6 @@ namespace AnomalyDetection.Infrastructure.Foundry;
 
 public sealed class FoundryService : IFoundryService
 {
-    private const string ApiVersion = "2025-11-15-preview";
     private static readonly TokenRequestContext TokenRequestContext = new(["https://cognitiveservices.azure.com/.default"]);
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
@@ -48,29 +47,81 @@ public sealed class FoundryService : IFoundryService
         _logger.LogInformation("Foundry call started for anomaly {AnomalyId}", evidence.Anomaly.Id);
 
         var accessToken = await _credential.GetTokenAsync(TokenRequestContext, cancellationToken);
-        using var request = new HttpRequestMessage(HttpMethod.Post, BuildRequestUri())
+        var requestBody = BuildRequestBody(evidence);
+        var maxAttempts = Math.Max(1, _options.MaxRetries + 1);
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            Content = new StringContent(BuildRequestBody(evidence), Encoding.UTF8, "application/json")
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+            using var request = new HttpRequestMessage(HttpMethod.Post, BuildRequestUri())
+            {
+                Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
 
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
+            try
+            {
+                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    if (ShouldRetry(response.StatusCode) && attempt < maxAttempts)
+                    {
+                        _logger.LogWarning(
+                            "Foundry call returned status {StatusCode} for anomaly {AnomalyId} on attempt {Attempt}/{MaxAttempts}. Retrying.",
+                            (int)response.StatusCode,
+                            evidence.Anomaly.Id,
+                            attempt,
+                            maxAttempts);
 
-        await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var document = await JsonDocument.ParseAsync(contentStream, cancellationToken: cancellationToken);
+                        await DelayBeforeRetryAsync(cancellationToken);
+                        continue;
+                    }
 
-        _logger.LogInformation("Foundry call completed for anomaly {AnomalyId}", evidence.Anomaly.Id);
+                    response.EnsureSuccessStatusCode();
+                }
 
-        return FoundryResponseParser.TryParse(document.RootElement, out var foundryResponse)
-            ? foundryResponse
-            : CreateInsufficientEvidenceResponse();
+                await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                using var document = await JsonDocument.ParseAsync(contentStream, cancellationToken: cancellationToken);
+
+                if (!FoundryResponseParser.TryParse(document.RootElement, out var foundryResponse))
+                {
+                    _logger.LogWarning("Foundry response parsing failed for anomaly {AnomalyId}", evidence.Anomaly.Id);
+                    return CreateInsufficientEvidenceResponse();
+                }
+
+                _logger.LogInformation(
+                    "Foundry call completed for anomaly {AnomalyId} on attempt {Attempt}/{MaxAttempts}",
+                    evidence.Anomaly.Id,
+                    attempt,
+                    maxAttempts);
+
+                return foundryResponse;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (HttpRequestException ex) when (attempt < maxAttempts)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Transient Foundry HTTP error for anomaly {AnomalyId} on attempt {Attempt}/{MaxAttempts}. Retrying.",
+                    evidence.Anomaly.Id,
+                    attempt,
+                    maxAttempts);
+
+                await DelayBeforeRetryAsync(cancellationToken);
+            }
+        }
+
+        return CreateInsufficientEvidenceResponse();
     }
 
     private Uri BuildRequestUri()
     {
         var baseUri = _options.ProjectEndpoint.TrimEnd('/');
-        return new Uri($"{baseUri}/applications/{Uri.EscapeDataString(_options.AgentName)}/protocols/openai/responses?api-version={ApiVersion}", UriKind.Absolute);
+        return new Uri(
+            $"{baseUri}/applications/{Uri.EscapeDataString(_options.AgentName)}/protocols/openai/responses?api-version={_options.ApiVersion}",
+            UriKind.Absolute);
     }
 
     private static string BuildRequestBody(EvidenceBundle evidence)
@@ -95,14 +146,14 @@ public sealed class FoundryService : IFoundryService
         }
 
         var prompt = new StringBuilder()
-            .AppendLine("You are analyzing an application anomaly using only the supplied evidence.")
-            .AppendLine("Rules:")
-            .AppendLine("- Use only supplied evidence.")
-            .AppendLine("- Never invent metrics, traces, or dependencies.")
-            .AppendLine("- Distinguish facts from hypotheses.")
-            .AppendLine("- If evidence is insufficient, return severity Unknown, confidence 0, rootCause 'Insufficient evidence'.")
-            .AppendLine("- Provide actionable recommendations.")
-            .AppendLine("- Return JSON only matching the requested schema.")
+            .AppendLine("You are an application production incident RCA agent.")
+            .AppendLine("Analyze application anomalies using ONLY the supplied anomaly information and evidence.")
+            .AppendLine("Never invent logs, metrics, traces, dependencies, deployments, configuration changes, infrastructure information, or behavior.")
+            .AppendLine("Clearly distinguish observed facts, hypotheses, and confirmed root cause.")
+            .AppendLine("Only identify a root cause when supported by evidence.")
+            .AppendLine("If evidence is insufficient: severity = Unknown, confidence = 0, rootCause = 'Insufficient evidence'.")
+            .AppendLine("Provide practical remediation recommendations.")
+            .AppendLine("Return structured JSON only.")
             .AppendLine()
             .AppendLine($"Anomaly jobId: {anomaly.JobId}")
             .AppendLine($"Detector: {anomaly.Detector}")
@@ -166,30 +217,95 @@ public sealed class FoundryService : IFoundryService
                             },
                             ["rootCause"] = new JsonObject { ["type"] = "string" },
                             ["confidence"] = new JsonObject { ["type"] = "number" },
-                            ["evidence"] = new JsonObject
+                            ["observedFacts"] = new JsonObject
                             {
                                 ["type"] = "array",
                                 ["items"] = new JsonObject { ["type"] = "string" }
                             },
-                            ["recommendations"] = new JsonObject
+                            ["hypotheses"] = new JsonObject
                             {
                                 ["type"] = "array",
-                                ["items"] = new JsonObject { ["type"] = "string" }
+                                ["items"] = new JsonObject
+                                {
+                                    ["type"] = "object",
+                                    ["additionalProperties"] = false,
+                                    ["properties"] = new JsonObject
+                                    {
+                                        ["description"] = new JsonObject { ["type"] = "string" },
+                                        ["confidence"] = new JsonObject { ["type"] = "number" },
+                                        ["evidence"] = new JsonObject
+                                        {
+                                            ["type"] = "array",
+                                            ["items"] = new JsonObject { ["type"] = "string" }
+                                        }
+                                    },
+                                    ["required"] = new JsonArray("description", "confidence", "evidence")
+                                }
                             },
                             ["affectedServices"] = new JsonObject
                             {
                                 ["type"] = "array",
+                                ["items"] = new JsonObject
+                                {
+                                    ["type"] = "object",
+                                    ["additionalProperties"] = false,
+                                    ["properties"] = new JsonObject
+                                    {
+                                        ["service"] = new JsonObject { ["type"] = "string" },
+                                        ["environment"] = new JsonObject { ["type"] = "string" },
+                                        ["notes"] = new JsonObject { ["type"] = "string" }
+                                    },
+                                    ["required"] = new JsonArray("service", "environment", "notes")
+                                }
+                            },
+                            ["evidence_supporting_conclusion"] = new JsonObject
+                            {
+                                ["type"] = "array",
                                 ["items"] = new JsonObject { ["type"] = "string" }
                             },
-                            ["explanation"] = new JsonObject { ["type"] = "string" }
+                            ["recommendedRemediations"] = new JsonObject
+                            {
+                                ["type"] = "array",
+                                ["items"] = new JsonObject { ["type"] = "string" }
+                            },
+                            ["explanation"] = new JsonObject { ["type"] = "string" },
+                            ["notes"] = new JsonObject { ["type"] = "string" }
                         },
-                        ["required"] = new JsonArray("severity", "rootCause", "confidence", "evidence", "recommendations", "affectedServices", "explanation")
+                        ["required"] = new JsonArray(
+                            "severity",
+                            "rootCause",
+                            "confidence",
+                            "observedFacts",
+                            "hypotheses",
+                            "affectedServices",
+                            "evidence_supporting_conclusion",
+                            "recommendedRemediations",
+                            "explanation",
+                            "notes")
                     }
                 }
             }
         };
 
         return request.ToJsonString();
+    }
+
+    private async Task DelayBeforeRetryAsync(CancellationToken cancellationToken)
+    {
+        if (_options.RetryDelaySeconds <= 0)
+        {
+            return;
+        }
+
+        await Task.Delay(TimeSpan.FromSeconds(_options.RetryDelaySeconds), cancellationToken);
+    }
+
+    private static bool ShouldRetry(System.Net.HttpStatusCode statusCode)
+    {
+        var code = (int)statusCode;
+        return statusCode == System.Net.HttpStatusCode.RequestTimeout ||
+               statusCode == System.Net.HttpStatusCode.TooManyRequests ||
+               code >= 500;
     }
 
     private static FoundryResponse CreateInsufficientEvidenceResponse()
@@ -199,10 +315,13 @@ public sealed class FoundryService : IFoundryService
             Severity = SeverityLevels.Unknown,
             RootCause = "Insufficient evidence",
             Confidence = 0,
+            ObservedFacts = [],
+            Hypotheses = [],
+            AffectedServices = [],
+            EvidenceSupportingConclusion = [],
+            RecommendedRemediations = [],
             Explanation = "Insufficient evidence",
-            Evidence = [],
-            Recommendations = [],
-            AffectedServices = []
+            Notes = "Insufficient evidence"
         };
     }
 }

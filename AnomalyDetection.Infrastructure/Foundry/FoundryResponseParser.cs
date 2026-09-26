@@ -5,6 +5,8 @@ namespace AnomalyDetection.Infrastructure.Foundry;
 
 public static class FoundryResponseParser
 {
+    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+
     public static bool TryParse(JsonElement root, out FoundryResponse response)
     {
         response = new FoundryResponse();
@@ -16,7 +18,7 @@ public static class FoundryResponseParser
 
         try
         {
-            var parsed = JsonSerializer.Deserialize<FoundryResponse>(outputText, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            var parsed = JsonSerializer.Deserialize<FoundryResponse>(outputText, SerializerOptions);
             if (parsed is null)
             {
                 return false;

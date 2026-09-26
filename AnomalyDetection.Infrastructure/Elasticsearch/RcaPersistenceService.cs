@@ -111,9 +111,30 @@ public sealed class RcaPersistenceService : IRcaPersistenceService
                     ["rootCause"] = new JsonObject { ["type"] = "text" },
                     ["confidence"] = new JsonObject { ["type"] = "double" },
                     ["explanation"] = new JsonObject { ["type"] = "text" },
-                    ["evidence"] = new JsonObject { ["type"] = "text" },
-                    ["recommendations"] = new JsonObject { ["type"] = "text" },
-                    ["affectedServices"] = new JsonObject { ["type"] = "keyword" },
+                    ["notes"] = new JsonObject { ["type"] = "text" },
+                    ["observedFacts"] = new JsonObject { ["type"] = "text" },
+                    ["hypotheses"] = new JsonObject
+                    {
+                        ["type"] = "nested",
+                        ["properties"] = new JsonObject
+                        {
+                            ["description"] = new JsonObject { ["type"] = "text" },
+                            ["confidence"] = new JsonObject { ["type"] = "double" },
+                            ["evidence"] = new JsonObject { ["type"] = "text" }
+                        }
+                    },
+                    ["affectedServices"] = new JsonObject
+                    {
+                        ["type"] = "nested",
+                        ["properties"] = new JsonObject
+                        {
+                            ["service"] = new JsonObject { ["type"] = "keyword" },
+                            ["environment"] = new JsonObject { ["type"] = "keyword" },
+                            ["notes"] = new JsonObject { ["type"] = "text" }
+                        }
+                    },
+                    ["evidence_supporting_conclusion"] = new JsonObject { ["type"] = "text" },
+                    ["recommendedRemediations"] = new JsonObject { ["type"] = "text" },
                     ["influencer"] = new JsonObject { ["type"] = "keyword" },
                     ["resultType"] = new JsonObject { ["type"] = "keyword" },
                     ["actual"] = new JsonObject { ["type"] = "double" },

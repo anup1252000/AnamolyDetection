@@ -37,6 +37,32 @@ public sealed class AnomalyInvestigationProcessorTests
         Assert.NotNull(persistence.Record);
         Assert.Equal(SeverityLevels.Unknown, persistence.Record!.Severity);
         Assert.Equal("Insufficient evidence", persistence.Record.RootCause);
+        Assert.Empty(persistence.Record.ObservedFacts);
+        Assert.Empty(persistence.Record.Hypotheses);
+        Assert.Empty(persistence.Record.AffectedServices);
+        Assert.Empty(persistence.Record.EvidenceSupportingConclusion);
+        Assert.Empty(persistence.Record.RecommendedRemediations);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_PersistsExpandedFoundryResponseFields()
+    {
+        var persistence = new FakePersistenceService(exists: false);
+        var processor = new AnomalyInvestigationProcessor(
+            new FakeEvidenceService(),
+            new FakeFoundryService(),
+            persistence,
+            NullLogger<AnomalyInvestigationProcessor>.Instance);
+
+        await processor.ProcessAsync(CreateMessage(), CancellationToken.None);
+
+        Assert.NotNull(persistence.Record);
+        Assert.Single(persistence.Record!.ObservedFacts);
+        Assert.Single(persistence.Record.Hypotheses);
+        Assert.Single(persistence.Record.AffectedServices);
+        Assert.Single(persistence.Record.EvidenceSupportingConclusion);
+        Assert.Single(persistence.Record.RecommendedRemediations);
+        Assert.Equal("Tune pool size", persistence.Record.Notes);
     }
 
     [Fact]
@@ -107,10 +133,29 @@ public sealed class AnomalyInvestigationProcessorTests
                 Severity = SeverityLevels.High,
                 RootCause = "Database latency",
                 Confidence = 0.9,
-                Evidence = ["db wait time increased"],
-                Recommendations = ["scale the database"],
-                AffectedServices = ["checkout"],
-                Explanation = "Database latency aligned with anomaly timing"
+                ObservedFacts = ["db wait time increased"],
+                Hypotheses =
+                [
+                    new FoundryHypothesis
+                    {
+                        Description = "Connection pool saturation",
+                        Confidence = 0.7,
+                        Evidence = ["timeouts increased"]
+                    }
+                ],
+                AffectedServices =
+                [
+                    new FoundryAffectedService
+                    {
+                        Service = "checkout",
+                        Environment = "prod",
+                        Notes = "primary impact"
+                    }
+                ],
+                EvidenceSupportingConclusion = ["db cpu saturation"],
+                RecommendedRemediations = ["scale the database"],
+                Explanation = "Database latency aligned with anomaly timing",
+                Notes = "Tune pool size"
             });
         }
     }

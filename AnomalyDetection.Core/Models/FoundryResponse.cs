@@ -13,15 +13,24 @@ public sealed class FoundryResponse
     [JsonPropertyName("confidence")]
     public double Confidence { get; init; }
 
-    [JsonPropertyName("evidence")]
-    public IReadOnlyList<string> Evidence { get; init; } = [];
+    [JsonPropertyName("observedFacts")]
+    public IReadOnlyList<string> ObservedFacts { get; init; } = [];
 
-    [JsonPropertyName("recommendations")]
-    public IReadOnlyList<string> Recommendations { get; init; } = [];
+    [JsonPropertyName("hypotheses")]
+    public IReadOnlyList<FoundryHypothesis> Hypotheses { get; init; } = [];
 
     [JsonPropertyName("affectedServices")]
-    public IReadOnlyList<string> AffectedServices { get; init; } = [];
+    public IReadOnlyList<FoundryAffectedService> AffectedServices { get; init; } = [];
+
+    [JsonPropertyName("evidence_supporting_conclusion")]
+    public IReadOnlyList<string> EvidenceSupportingConclusion { get; init; } = [];
+
+    [JsonPropertyName("recommendedRemediations")]
+    public IReadOnlyList<string> RecommendedRemediations { get; init; } = [];
 
     [JsonPropertyName("explanation")]
     public string Explanation { get; init; } = string.Empty;
+
+    [JsonPropertyName("notes")]
+    public string Notes { get; init; } = string.Empty;
 }

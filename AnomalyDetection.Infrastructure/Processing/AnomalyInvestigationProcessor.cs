@@ -58,9 +58,12 @@ public sealed class AnomalyInvestigationProcessor : IAnomalyInvestigationProcess
             RootCause = evidence.HasEvidence ? rca.RootCause : "Insufficient evidence",
             Confidence = evidence.HasEvidence ? rca.Confidence : 0,
             Explanation = evidence.HasEvidence ? rca.Explanation : "Insufficient evidence",
-            Evidence = evidence.HasEvidence ? rca.Evidence : [],
-            Recommendations = evidence.HasEvidence ? rca.Recommendations : [],
-            AffectedServices = evidence.HasEvidence ? rca.AffectedServices : []
+            Notes = evidence.HasEvidence ? rca.Notes : "Insufficient evidence",
+            ObservedFacts = evidence.HasEvidence ? rca.ObservedFacts : [],
+            Hypotheses = evidence.HasEvidence ? rca.Hypotheses : [],
+            AffectedServices = evidence.HasEvidence ? rca.AffectedServices : [],
+            EvidenceSupportingConclusion = evidence.HasEvidence ? rca.EvidenceSupportingConclusion : [],
+            RecommendedRemediations = evidence.HasEvidence ? rca.RecommendedRemediations : []
         }, cancellationToken);
 
         _logger.LogInformation("RCA persisted for anomaly {AnomalyId}", message.Id);

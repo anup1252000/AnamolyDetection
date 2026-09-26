@@ -43,6 +43,10 @@ public static class ServiceCollectionExtensions
             .Bind(configuration.GetSection(FoundryOptions.SectionName))
             .Validate(options => !string.IsNullOrWhiteSpace(options.ProjectEndpoint), "Foundry:ProjectEndpoint is required.")
             .Validate(options => !string.IsNullOrWhiteSpace(options.AgentName), "Foundry:AgentName is required.")
+            .Validate(options => !string.IsNullOrWhiteSpace(options.ApiVersion), "Foundry:ApiVersion is required.")
+            .Validate(options => options.TimeoutSeconds > 0, "Foundry:TimeoutSeconds must be greater than zero.")
+            .Validate(options => options.MaxRetries >= 0, "Foundry:MaxRetries must be zero or greater.")
+            .Validate(options => options.RetryDelaySeconds >= 0, "Foundry:RetryDelaySeconds must be zero or greater.")
             .ValidateOnStart();
 
         services
