@@ -91,8 +91,8 @@ public sealed class RcaWorker : BackgroundService
         var message = DeserializeMessage(eventArgs.Body.ToArray());
         if (message is null)
         {
-            _logger.LogWarning("Rejecting malformed anomaly message from queue {Queue}", _options.Queue);
-            _channel.BasicReject(eventArgs.DeliveryTag, requeue: false);
+            _logger.LogWarning("Discarding malformed anomaly message from queue {Queue}", _options.Queue);
+            _channel.BasicAck(eventArgs.DeliveryTag, multiple: false);
             return;
         }
 

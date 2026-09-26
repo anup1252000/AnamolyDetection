@@ -115,6 +115,12 @@ public sealed class KibanaBootstrapService : IKibanaBootstrapService
                 (int)response.StatusCode,
                 responseBody);
 
+            if (responseBody.Contains("current license is non-compliant for [ml]", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogError(
+                    "Elasticsearch ML anomaly detection is unavailable with the current license. Use an Elasticsearch license/trial that supports ML or use the configured alternative.");
+            }
+
             throw new HttpRequestException(
                 $"Failed to create ML job. HTTP {(int)response.StatusCode}: {responseBody}");
         }

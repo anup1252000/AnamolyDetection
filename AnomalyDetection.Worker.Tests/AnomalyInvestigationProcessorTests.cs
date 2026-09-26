@@ -39,6 +39,29 @@ public sealed class AnomalyInvestigationProcessorTests
         Assert.Equal("Insufficient evidence", persistence.Record.RootCause);
     }
 
+    [Fact]
+    public async Task ProcessAsync_PassesCancellationTokenThroughDependencies()
+    {
+        var persistence = new FakePersistenceService(exists: false);
+        var evidence = new FakeEvidenceService();
+        var foundry = new FakeFoundryService();
+        var processor = new AnomalyInvestigationProcessor(
+            evidence,
+            foundry,
+            persistence,
+            NullLogger<AnomalyInvestigationProcessor>.Instance);
+
+        using var cts = new CancellationTokenSource();
+
+        await processor.ProcessAsync(CreateMessage(), cts.Token);
+
+        Assert.Equal(cts.Token, evidence.Token);
+        Assert.Equal(cts.Token, foundry.Token);
+        Assert.Equal(cts.Token, persistence.ExistsToken);
+        Assert.Equal(cts.Token, persistence.EnsureIndexToken);
+        Assert.Equal(cts.Token, persistence.PersistToken);
+    }
+
     private static AnomalyMessage CreateMessage()
     {
         return new AnomalyMessage
@@ -59,9 +82,11 @@ public sealed class AnomalyInvestigationProcessorTests
     private sealed class FakeEvidenceService : IElasticsearchEvidenceService
     {
         public EvidenceBundle? Bundle { get; init; }
+        public CancellationToken Token { get; private set; }
 
         public Task<EvidenceBundle> GetEvidenceAsync(AnomalyMessage anomaly, CancellationToken cancellationToken)
         {
+            Token = cancellationToken;
             return Task.FromResult(Bundle ?? new EvidenceBundle
             {
                 Anomaly = anomaly,
@@ -72,8 +97,11 @@ public sealed class AnomalyInvestigationProcessorTests
 
     private sealed class FakeFoundryService : IFoundryService
     {
+        public CancellationToken Token { get; private set; }
+
         public Task<FoundryResponse> AnalyzeAsync(EvidenceBundle evidence, CancellationToken cancellationToken)
         {
+            Token = cancellationToken;
             return Task.FromResult(new FoundryResponse
             {
                 Severity = SeverityLevels.High,
@@ -93,13 +121,25 @@ public sealed class AnomalyInvestigationProcessorTests
 
         public bool PersistCalled { get; private set; }
         public RcaRecord? Record { get; private set; }
+        public CancellationToken ExistsToken { get; private set; }
+        public CancellationToken EnsureIndexToken { get; private set; }
+        public CancellationToken PersistToken { get; private set; }
 
-        public Task<bool> ExistsAsync(string id, CancellationToken cancellationToken) => Task.FromResult(_exists);
+        public Task<bool> ExistsAsync(string id, CancellationToken cancellationToken)
+        {
+            ExistsToken = cancellationToken;
+            return Task.FromResult(_exists);
+        }
 
-        public Task EnsureIndexAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task EnsureIndexAsync(CancellationToken cancellationToken)
+        {
+            EnsureIndexToken = cancellationToken;
+            return Task.CompletedTask;
+        }
 
         public Task PersistAsync(RcaRecord record, CancellationToken cancellationToken)
         {
+            PersistToken = cancellationToken;
             PersistCalled = true;
             Record = record;
             return Task.CompletedTask;

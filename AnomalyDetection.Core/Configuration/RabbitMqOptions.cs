@@ -12,7 +12,7 @@ public sealed class RabbitMqOptions
     public string Exchange { get; init; } = "anomaly.events";
     public string Queue { get; init; } = "anomaly-investigation";
     public string RoutingKey { get; init; } = "anomaly.detected";
-    public string DeadLetterQueue { get; init; } = "anomaly-investigation-dlq";
+    public string DeadLetterQueue { get; init; } = "anomaly-investigation.dlq";
     public ushort PrefetchCount { get; init; } = 10;
     public int MaxRetryAttempts { get; init; } = 3;
     public int RetryDelaySeconds { get; init; } = 5;
